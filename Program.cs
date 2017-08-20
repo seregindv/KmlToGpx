@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Remoting.Messaging;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
@@ -13,32 +14,6 @@ using System.Xml.XPath;
 
 namespace KmlToGpx
 {
-    class Folder
-    {
-        public Folder()
-        {
-            Points = new List<Point>();
-            Type = FolderType.Points;
-        }
-
-        public FolderType Type;
-        public string Name;
-        public List<Point> Points;
-    }
-
-    enum FolderType
-    {
-        Points,
-        Path
-    }
-
-    class Point
-    {
-        public string Name;
-        public string Latitude;
-        public string Longtitude;
-    }
-
     class Program
     {
         private static string Trim(string s)
@@ -86,57 +61,77 @@ namespace KmlToGpx
             }
             else
                 doc = XDocument.Load(args[0]);
+
             var firstElement = doc.Elements().First();
             var ns = firstElement.GetDefaultNamespace();
-            var folders = new List<Folder>();
             var nsManager = new XmlNamespaceManager(new NameTable());
             nsManager.AddNamespace("kml", ns.NamespaceName);
+
+            var folders = new List<Folder>();
             foreach (var kmlFolder in doc.XPathSelectElements("//kml:Folder", nsManager))
+                ProcessFolder(kmlFolder, nsManager, folders);
+            if (folders.Count == 0)
+                foreach (var kmlDocument in doc.XPathSelectElements("//kml:Document", nsManager))
+                    ProcessFolder(kmlDocument, nsManager, folders);
+
+            var fullPath = Path.GetFullPath(args[0]);
+            var path = Path.GetDirectoryName(fullPath);
+            SaveFolders(folders, path);
+        }
+
+        private static void ProcessFolder(XElement kmlFolder, XmlNamespaceManager nsManager, List<Folder> folders)
+        {
+            var folderName = kmlFolder.XPathSelectElement("kml:name", nsManager).Value;
+            var folder = new Folder { Name = folderName };
+            folders.Add(folder);
+            foreach (var kmlPlacemark in kmlFolder.XPathSelectElements("kml:Placemark", nsManager))
             {
-                var folderName = kmlFolder.XPathSelectElement("kml:name", nsManager).Value;
-                var folder = new Folder { Name = folderName };
-                folders.Add(folder);
-                foreach (var kmlPlacemark in kmlFolder.XPathSelectElements("kml:Placemark", nsManager))
+                var placemarkName = kmlPlacemark.XPathSelectElement("kml:name", nsManager).Value;
+                var placemarkPoint = kmlPlacemark.XPathSelectElement("kml:Point/kml:coordinates", nsManager);
+                var placemarkDescription = kmlPlacemark.XPathSelectElement("kml:description", nsManager)?.Value;
+                var styleUrl = kmlPlacemark.XPathSelectElement("kml:styleUrl", nsManager)?.Value;
+                string color = null;
+                if (styleUrl != null)
                 {
-                    var placemarkName = kmlPlacemark.XPathSelectElement("kml:name", nsManager).Value;
-                    var placemarkPoint = kmlPlacemark.XPathSelectElement("kml:Point/kml:coordinates", nsManager);
-                    if (placemarkPoint != null)
+                    var match = Regex.Match(styleUrl, @"(?:\-)([ABCDEF\d]{6})(?:\-|$)");
+                    if (match.Success)
+                        color = match.Groups[1].Value;
+                }
+                if (placemarkPoint != null)
+                {
+                    var coordinates = placemarkPoint.Value.Split(',');
+                    folder.Points.Add(new Point
                     {
-                        var coordinates = placemarkPoint.Value.Split(',');
-                        folder.Points.Add(new Point
-                        {
-                            Name = placemarkName,
-                            Latitude = Trim(coordinates[1]),
-                            Longtitude = Trim(coordinates[0])
-                        });
-                        continue;
-                    }
-                    var lineStringCoordinates = kmlPlacemark.XPathSelectElement("kml:LineString/kml:coordinates", nsManager);
-                    if (lineStringCoordinates != null)
+                        Name = placemarkName,
+                        Latitude = Trim(coordinates[1]),
+                        Longtitude = Trim(coordinates[0]),
+                        Description = placemarkDescription,
+                        Color = color
+                    });
+                    continue;
+                }
+                var lineStringCoordinates = kmlPlacemark.XPathSelectElement("kml:LineString/kml:coordinates", nsManager);
+                if (lineStringCoordinates != null)
+                {
+                    var lineFolder = new Folder { Name = placemarkName, Type = FolderType.Path };
+                    folders.Add(lineFolder);
+                    using (var sr = new StringReader(lineStringCoordinates.Value))
                     {
-                        var lineFolder = new Folder { Name = placemarkName, Type = FolderType.Path };
-                        folders.Add(lineFolder);
-                        using (var sr = new StringReader(lineStringCoordinates.Value))
+                        string coordinateLine;
+                        while ((coordinateLine = sr.ReadLine()) != null)
                         {
-                            string coordinateLine;
-                            while ((coordinateLine = sr.ReadLine()) != null)
+                            if (String.IsNullOrWhiteSpace(coordinateLine))
+                                continue;
+                            var coordinates = coordinateLine.Split(',');
+                            lineFolder.Points.Add(new Point
                             {
-                                if (String.IsNullOrWhiteSpace(coordinateLine))
-                                    continue;
-                                var coordinates = coordinateLine.Split(',');
-                                lineFolder.Points.Add(new Point
-                                {
-                                    Latitude = Trim(coordinates[1]),
-                                    Longtitude = Trim(coordinates[0])
-                                });
-                            }
+                                Latitude = Trim(coordinates[1]),
+                                Longtitude = Trim(coordinates[0])
+                            });
                         }
                     }
                 }
             }
-            var fullPath = Path.GetFullPath(args[0]);
-            var path = Path.GetDirectoryName(fullPath);
-            SaveFolders(folders, path);
         }
 
         private static void SaveFolders(List<Folder> folders, string path)
@@ -171,7 +166,12 @@ namespace KmlToGpx
                     select new XElement("wpt",
                         new XAttribute("lat", point.Latitude),
                         new XAttribute("lon", point.Longtitude),
-                        new XElement("name", point.Name)
+                        new XElement("name", point.Name),
+                        point.Color == null ? null
+                        : new XElement("extensions",
+                            new XElement("color", "#" + point.Color)),
+                        point.Description==null? null
+                        : new XElement("desc", point.Description)
                     )
                 )
             );
