@@ -138,6 +138,8 @@ namespace KmlToGpx
         {
             foreach (var folder in folders)
             {
+                if (folder.Points.Count == 0)
+                    continue;
                 var outDoc = folder.Type == FolderType.Points ? GetPoints(folder) : GetPath(folder);
                 var fileName = TrimIllegalChars(folder.Name);
                 var i = 0;
@@ -170,7 +172,7 @@ namespace KmlToGpx
                         point.Color == null ? null
                         : new XElement("extensions",
                             new XElement("color", "#" + point.Color)),
-                        point.Description==null? null
+                        point.Description == null ? null
                         : new XElement("desc", point.Description)
                     )
                 )
