@@ -113,7 +113,7 @@ namespace KmlToGpx
                 var lineStringCoordinates = kmlPlacemark.XPathSelectElement("kml:LineString/kml:coordinates", nsManager);
                 if (lineStringCoordinates != null)
                 {
-                    var lineFolder = new Folder { Name = placemarkName, Type = FolderType.Path };
+                    var lineFolder = new Folder { Name = folder.Name + " - " + placemarkName, Type = FolderType.Path };
                     folders.Add(lineFolder);
                     using (var sr = new StringReader(lineStringCoordinates.Value))
                     {
