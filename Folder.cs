@@ -13,5 +13,6 @@ namespace KmlToGpx
         public FolderType Type;
         public string Name;
         public List<Point> Points;
+        public string Color;
     }
 }

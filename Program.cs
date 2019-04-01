@@ -89,14 +89,7 @@ namespace KmlToGpx
                 var placemarkName = kmlPlacemark.XPathSelectElement("kml:name", nsManager).Value;
                 var placemarkPoint = kmlPlacemark.XPathSelectElement("kml:Point/kml:coordinates", nsManager);
                 var placemarkDescription = kmlPlacemark.XPathSelectElement("kml:description", nsManager)?.Value;
-                var styleUrl = kmlPlacemark.XPathSelectElement("kml:styleUrl", nsManager)?.Value;
-                string color = null;
-                if (styleUrl != null)
-                {
-                    var match = Regex.Match(styleUrl, @"(?:\-)([ABCDEF\d]{6})(?:\-|$)");
-                    if (match.Success)
-                        color = match.Groups[1].Value;
-                }
+                var color = GetColor(nsManager, kmlPlacemark);
                 if (placemarkPoint != null)
                 {
                     var coordinates = placemarkPoint.Value.Split(',');
@@ -110,10 +103,17 @@ namespace KmlToGpx
                     });
                     continue;
                 }
-                var lineStringCoordinates = kmlPlacemark.XPathSelectElement("kml:LineString/kml:coordinates", nsManager);
+                var lineStringCoordinates = kmlPlacemark.XPathSelectElement("kml:LineString/kml:coordinates", nsManager)
+                    ?? kmlPlacemark.XPathSelectElement("//kml:LinearRing/kml:coordinates", nsManager);
                 if (lineStringCoordinates != null)
                 {
-                    var lineFolder = new Folder { Name = folder.Name + " - " + placemarkName, Type = FolderType.Path };
+                    color = GetColor(nsManager, kmlPlacemark);
+                    var lineFolder = new Folder
+                    {
+                        Name = folder.Name + " - " + placemarkName,
+                        Type = FolderType.Path,
+                        Color = color
+                    };
                     folders.Add(lineFolder);
                     using (var sr = new StringReader(lineStringCoordinates.Value))
                     {
@@ -132,6 +132,20 @@ namespace KmlToGpx
                     }
                 }
             }
+        }
+
+        private static string GetColor(XmlNamespaceManager nsManager, XElement kmlPlacemark)
+        {
+            var styleUrl = kmlPlacemark.XPathSelectElement("kml:styleUrl", nsManager)?.Value;
+            string color = null;
+            if (styleUrl != null)
+            {
+                var match = Regex.Match(styleUrl, @"(?:\-)([ABCDEF\d]{6})(?:\-|$)");
+                if (match.Success)
+                    color = match.Groups[1].Value;
+            }
+
+            return color;
         }
 
         private static void SaveFolders(List<Folder> folders, string path)
@@ -169,14 +183,20 @@ namespace KmlToGpx
                         new XAttribute("lat", point.Latitude),
                         new XAttribute("lon", point.Longtitude),
                         new XElement("name", point.Name),
-                        point.Color == null ? null
-                        : new XElement("extensions",
-                            new XElement("color", "#" + point.Color)),
+                        GetColor(point.Color),
                         point.Description == null ? null
                         : new XElement("desc", point.Description)
                     )
                 )
             );
+        }
+
+        private static XElement GetColor(string color)
+        {
+            return color == null
+                ? null
+                : new XElement("extensions",
+                    new XElement("color", "#" + color));
         }
 
         private static XDocument GetPath(Folder folder)
@@ -185,6 +205,7 @@ namespace KmlToGpx
                 new XDeclaration("1.0", "UTF-8", null),
                 new XElement("gpx",
                     new XElement("trk",
+                        GetColor(folder.Color),
                         new XElement("trkseg",
                             folder.Points.Select(
                                 point =>
