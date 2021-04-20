@@ -62,26 +62,27 @@ namespace KmlToGpx
             else
                 doc = XDocument.Load(args[0]);
 
-            var firstElement = doc.Elements().First();
+            var firstElement = doc.Root;
             var ns = firstElement.GetDefaultNamespace();
             var nsManager = new XmlNamespaceManager(new NameTable());
             nsManager.AddNamespace("kml", ns.NamespaceName);
 
             var folders = new List<Folder>();
+            var defaultName = doc.XPathSelectElement("/kml:kml/kml:Document/kml:name", nsManager)?.Value;
             foreach (var kmlFolder in doc.XPathSelectElements("//kml:Folder", nsManager))
-                ProcessFolder(kmlFolder, nsManager, folders);
+                ProcessFolder(kmlFolder, nsManager, folders, defaultName);
             if (folders.Count == 0)
                 foreach (var kmlDocument in doc.XPathSelectElements("//kml:Document", nsManager))
-                    ProcessFolder(kmlDocument, nsManager, folders);
+                    ProcessFolder(kmlDocument, nsManager, folders, defaultName);
 
             var fullPath = Path.GetFullPath(args[0]);
             var path = Path.GetDirectoryName(fullPath);
             SaveFolders(folders, path);
         }
 
-        private static void ProcessFolder(XElement kmlFolder, XmlNamespaceManager nsManager, List<Folder> folders)
+        private static void ProcessFolder(XElement kmlFolder, XmlNamespaceManager nsManager, List<Folder> folders, string defaultName)
         {
-            var folderName = kmlFolder.XPathSelectElement("kml:name", nsManager).Value;
+            var folderName = kmlFolder.XPathSelectElement("kml:name", nsManager)?.Value ?? defaultName;
             var folder = new Folder { Name = folderName };
             folders.Add(folder);
             foreach (var kmlPlacemark in kmlFolder.XPathSelectElements("kml:Placemark", nsManager))
@@ -136,16 +137,23 @@ namespace KmlToGpx
 
         private static string GetColor(XmlNamespaceManager nsManager, XElement kmlPlacemark)
         {
+            // google
             var styleUrl = kmlPlacemark.XPathSelectElement("kml:styleUrl", nsManager)?.Value;
-            string color = null;
             if (styleUrl != null)
             {
                 var match = Regex.Match(styleUrl, @"(?:\-)([ABCDEF\d]{6})(?:\-|$)");
                 if (match.Success)
-                    color = match.Groups[1].Value;
+                    return match.Groups[1].Value;
             }
-
-            return color;
+            // yandex
+            var rgb = kmlPlacemark.XPathSelectElement("kml:Style/kml:IconStyle/kml:color", nsManager)?.Value;
+            if (rgb != null)
+            {
+                if (rgb.Length > 6)
+                    rgb = rgb.Substring(rgb.Length - 6, 6);
+                return rgb;
+            }
+            return null;
         }
 
         private static void SaveFolders(List<Folder> folders, string path)
