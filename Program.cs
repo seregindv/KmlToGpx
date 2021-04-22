@@ -151,6 +151,8 @@ namespace KmlToGpx
             {
                 if (rgb.Length > 6)
                     rgb = rgb.Substring(rgb.Length - 6, 6);
+                if (rgb.Length == 6)
+                    rgb = rgb.Substring(4, 2) + rgb.Substring(2, 2) + rgb.Substring(0, 2);
                 return rgb;
             }
             return null;
