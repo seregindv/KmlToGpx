@@ -111,25 +111,20 @@ namespace KmlToGpx
                     color = GetColor(nsManager, kmlPlacemark);
                     var lineFolder = new Folder
                     {
-                        Name = folder.Name + " - " + placemarkName,
+                        Name = folder.Name + " - " + (string.IsNullOrEmpty(placemarkName) ? placemarkDescription : placemarkName),
                         Type = FolderType.Path,
                         Color = color
                     };
                     folders.Add(lineFolder);
-                    using (var sr = new StringReader(lineStringCoordinates.Value))
+                    var lines = lineStringCoordinates.Value.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var coordinateLine in lines)
                     {
-                        string coordinateLine;
-                        while ((coordinateLine = sr.ReadLine()) != null)
+                        var coordinates = coordinateLine.Split(',');
+                        lineFolder.Points.Add(new Point
                         {
-                            if (String.IsNullOrWhiteSpace(coordinateLine))
-                                continue;
-                            var coordinates = coordinateLine.Split(',');
-                            lineFolder.Points.Add(new Point
-                            {
-                                Latitude = Trim(coordinates[1]),
-                                Longtitude = Trim(coordinates[0])
-                            });
-                        }
+                            Latitude = Trim(coordinates[1]),
+                            Longtitude = Trim(coordinates[0])
+                        });
                     }
                 }
             }
